@@ -2,7 +2,7 @@
 
 Step 1:
 
-Install dependencies by:
+Install dependencies:
 
 pip install -r requirements.txt
 
