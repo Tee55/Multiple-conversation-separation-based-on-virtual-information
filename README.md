@@ -8,12 +8,14 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
+Step 2:
 Prepare Dataset:
 
 ```
 python prepare_dataset.py
 ```
 
+Step 3:
 Run VoiceFilter:
 
 ```
