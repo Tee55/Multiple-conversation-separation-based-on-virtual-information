@@ -12,7 +12,7 @@ Step 2: Prepare Dataset
 python prepare_dataset.py
 ```
 
-Step 3: Run VoiceFilter
+Step 3: Run VoiceSplit
 
 ```
 python main.py
