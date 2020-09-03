@@ -55,6 +55,12 @@ IMG_HEIGHT_MEL = 128
 IMG_WIDTH = 44
 
 duration = 1
+'''
+main_speaker = ['SirKenRobinson', 'AlGore', 'DavidPogue', 'MajoraCarter', 'HansRosling', 'TonyRobbins', 'JuliaSweeney', 'JoshuaPrinceRamus', 'DanDennett', 'RickWarren']
+year = ['2006', '2006','2006', '2006', '2006', '2006', '2006','2006', '2006', '2006']
+'''
+main_speaker = ['AlGore', 'DavidPogue', 'MajoraCarter', 'HansRosling', 'TonyRobbins']
+year = ['2006','2006', '2006', '2006', '2006']
 
 class VoiceSplit:
 
@@ -134,23 +140,25 @@ class VoiceSplit:
             each_main_speaker_target = 'SirKenRobinson'
             each_year_target = '2006'
 
-            ref_speaker_path = audio_file_path_train + 'raw/' + each_main_speaker_target + '_' + each_year_target + '.wav'
+            for each_main_speaker_mixed in main_speaker:
 
-            wav_path = ref_speaker_path
+                ref_speaker_path = audio_file_path_train + 'raw/' + each_main_speaker_target + '_' + each_year_target + '.wav'
 
-            x, fs = librosa.load(wav_path)
+                wav_path = ref_speaker_path
 
-            aud_length = librosa.get_duration(x)
+                x, fs = librosa.load(wav_path)
 
-            for offset in range(0, int(math.ceil(aud_length))-duration, duration):
+                aud_length = librosa.get_duration(x)
 
-                mel = self.wav2mel(file_path=wav_path, offset=offset)
-                sig = self.wav2sig(file_path=wav_path, offset=offset)
+                for offset in range(0, int(math.ceil(aud_length))-duration, duration):
 
-                data_mel.append(mel)
-                data_sig.append(sig)
+                    mel = self.wav2mel(file_path=wav_path, offset=offset)
+                    sig = self.wav2sig(file_path=wav_path, offset=offset)
 
-                bar.next()
+                    data_mel.append(mel)
+                    data_sig.append(sig)
+
+                    bar.next()
 
             data_mel = np.array(data_mel)
             data_sig = np.array(data_sig)
@@ -194,25 +202,25 @@ class VoiceSplit:
 
             each_main_speaker_target = 'SirKenRobinson'
             each_year_target = '2006'
-            each_main_speaker_mixed = 'AlGore'
-            each_year_mixed = '2006'
 
-            mixed_wav_path = audio_file_path_test + 'mixed/' + 'mixed' + '_' + each_main_speaker_target + '_' + each_year_target + '_' +  each_main_speaker_mixed + '_' + each_year_mixed + '.wav'
+            for each_main_speaker_mixed, each_year_mixed in zip(main_speaker, year):
 
-            wav_path = mixed_wav_path
+                mixed_wav_path = audio_file_path_test + 'mixed/' + 'mixed' + '_' + each_main_speaker_target + '_' + each_year_target + '_' +  each_main_speaker_mixed + '_' + each_year_mixed + '.wav'
 
-            x, fs = librosa.load(wav_path)
-            aud_length = librosa.get_duration(x)
+                wav_path = mixed_wav_path
 
-            for offset in range(0, int(math.ceil(aud_length))-duration, duration):
+                x, fs = librosa.load(wav_path)
+                aud_length = librosa.get_duration(x)
 
-                mel = self.wav2mel(file_path=wav_path, offset=offset)
-                sig = self.wav2sig(file_path=wav_path, offset=offset)
+                for offset in range(0, int(math.ceil(aud_length))-duration, duration):
 
-                data_mel.append(mel)
-                data_sig.append(sig)
+                    mel = self.wav2mel(file_path=wav_path, offset=offset)
+                    sig = self.wav2sig(file_path=wav_path, offset=offset)
 
-                bar.next()
+                    data_mel.append(mel)
+                    data_sig.append(sig)
+
+                    bar.next()
 
             data_mel = np.array(data_mel)
             data_sig = np.array(data_sig)
@@ -221,7 +229,41 @@ class VoiceSplit:
 
             return data_mel, data_sig, fs
 
-    def LSTM_model(self, input_shape=(1, 22050)):
+    def CNN_model(self, input_shape=(IMG_HEIGHT_MEL, IMG_WIDTH, 1), classes=1):
+        # c.f. https://github.com/alexgkendall/SegNet-Tutorial/blob/master/Example_Models/bayesian_segnet_camvid.prototxt
+        img_input = Input(shape=input_shape)
+        x = img_input
+        # Encoder
+        x = Conv2D(64, 3, 3, border_mode="same")(x)
+        x = BatchNormalization()(x)
+        x = Activation("relu")(x)
+        x = MaxPooling2D(pool_size=(2, 2))(x)
+
+        x = Conv2D(128, 3, 3, border_mode="same")(x)
+        x = BatchNormalization()(x)
+        x = Activation("relu")(x)
+        x = MaxPooling2D(pool_size=(2, 2))(x)
+
+        # Decoder
+        x = UpSampling2D(size=(2, 2))(x)
+        x = Conv2D(128, 3, 3, border_mode="same")(x)
+        x = BatchNormalization()(x)
+        x = Activation("relu")(x)
+
+        x = UpSampling2D(size=(2, 2))(x)
+        x = Conv2D(64, 3, 3, border_mode="same")(x)
+        x = BatchNormalization()(x)
+        x = Activation("relu")(x)
+
+        x = Conv2D(classes, 1, 1, border_mode="valid")(x)
+        x = Activation("sigmoid")(x)
+        model = Model(img_input, x)
+
+        model.compile(loss="mse", optimizer='adadelta', metrics=["accuracy"])
+
+        return model
+
+    def LSTM_model(self, input_shape=(128, 44)):
 
         seq_input = Input(shape=input_shape)
         x = seq_input
@@ -243,37 +285,53 @@ class VoiceSplit:
 
         return model
 
+    def autoencoder(self, data_mel):
+        
+        encoder_model = self.CNN_model()
+
+        train_X = np.reshape(data_mel, (data_mel.shape[0], IMG_HEIGHT_MEL, IMG_WIDTH, 1))
+
+        data_mel_mask = encoder_model.predict(train_X)
+
+        data_mel_mask = np.reshape(data_mel_mask, (data_mel_mask.shape[0], IMG_HEIGHT_MEL, IMG_WIDTH))
+
+        data_mel_encoded = []
+        for mel, mask in zip(data_mel, data_mel_mask):
+
+            soft_pred = np.multiply(mel, mask)
+            data_mel_encoded.append(soft_pred)
+
+        data_mel_encoded = np.array(data_mel_encoded)
+
+        return data_mel_encoded
+
     def train(self):
 
         self.data_mel_train, self.data_sig_train, self.fs = self.preprocess(data_type='train')
         self.data_mel_mixed, self.data_sig_mixed, self.fs = self.preprocess(data_type='mixed')
+
+        self.data_mel_mixed_encoded = self.autoencoder(data_mel=self.data_mel_mixed)
         
-        train_X = np.reshape(self.data_sig_mixed, (self.data_sig_mixed.shape[0], 1, 22050))
+        train_X = self.data_mel_mixed_encoded
         train_y = np.reshape(self.data_sig_train, (self.data_sig_train.shape[0], 22050))
 
         model = self.LSTM_model()
-        model.fit(train_X, train_y, batch_size=10, epochs=300)
+        model.fit(train_X, train_y, batch_size=10, epochs=200)
         model.save_weights('LSTM_weight.h5')
 
     def predict(self):
 
         self.data_mel_test, self.data_sig_test, self.fs = self.preprocess(data_type='test')
 
+        self.data_mel_test_encoded = self.autoencoder(data_mel=self.data_mel_test)
+
         model = self.LSTM_model()
         model.load_weights('LSTM_weight.h5')
 
         # Prediction
-        test_X = np.reshape(self.data_sig_test, (self.data_sig_test.shape[0], 1, 22050))
+        test_X = self.data_mel_test_encoded
         pred = model.predict(test_X)
-        '======================================================================'
-        plt.figure(figsize=(14, 5))
-        librosa.display.waveplot(self.data_sig_test[10], sr=self.fs)
-        plt.savefig('input_LSTM.jpg')
 
-        plt.figure(figsize=(14, 5))
-        librosa.display.waveplot(pred[10], sr=self.fs)
-        plt.savefig('output_LSTM.jpg')
-        '======================================================================'
         combine = []
         bar = Bar('Generate audio')
         for sig in pred:
@@ -301,7 +359,7 @@ class VoiceSplit:
 
         self.reset_keras()
 
-        self.train()
+        #self.train()
         self.predict()
 
 if __name__ == "__main__":
